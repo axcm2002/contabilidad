@@ -3,7 +3,14 @@
     "allow": [
       "Bash(npm install *)",
       "Bash(npm run *)",
-      "Bash(git add *)"
+      "Bash(git add *)",
+      "Bash(git -c user.email=\"richard@gonfixit.com\" -c user.name=\"Richard\" commit -m \"Initial commit: procesador de facturas \\(backend + frontend\\)\")",
+      "Bash(git remote *)",
+      "Bash(git push *)",
+      "PowerShell(Get-NetTCPConnection *)",
+      "Bash(curl -s -w \"\\\\nHTTP_STATUS:%{http_code}\\\\n\" http://localhost:3000/health)",
+      "Bash(curl -s -o /dev/null -w \"Frontend HTTP_STATUS:%{http_code}\\\\n\" http://localhost:5174/)",
+      "Bash(git -c user.email=richard@gonfixit.com -c user.name=Richard commit -m ' *)"
     ]
   }
 }

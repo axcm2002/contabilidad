@@ -5,34 +5,45 @@ const client = new Anthropic({
 });
 
 const MODEL = 'claude-sonnet-4-6';
-// Para reducir costos a la mitad o más, cambiar por: 'claude-haiku-4-5-20251001'
+// Para reducir costos a la mitad, cambiar por: 'claude-haiku-4-5-20251001'
 
-const PROMPT_EXTRACCION = `Eres un asistente experto en extracción de datos de facturas chilenas.
+const PROMPT_FACTURA = `Eres un experto en facturas y documentos tributarios chilenos (DTE). Analiza esta imagen y extrae los datos en JSON. Si no es una factura/boleta o no podes leer claramente, responde con {"error": "explicación breve"}.
 
-Analiza la factura adjunta y devuelve EXCLUSIVAMENTE un objeto JSON válido (sin markdown, sin explicaciones, sin texto antes o después) con esta estructura exacta:
-
+Estructura JSON requerida (respeta los nombres de keys exactamente):
 {
-  "proveedor": "Razón social del emisor",
-  "rut_proveedor": "RUT en formato 12.345.678-9",
-  "numero_factura": "Folio o número del documento",
-  "fecha_emision": "YYYY-MM-DD",
-  "monto_neto": 0,
-  "iva": 0,
-  "monto_total": 0,
-  "moneda": "CLP",
-  "categoria": "Una de: Insumos, Servicios, Arriendo, Combustible, Tecnología, Marketing, Profesionales, Mantención, Otros",
-  "items_count": 0,
-  "confianza": 0.0
+  "tipo_documento": "Factura electrónica" | "Boleta electrónica" | "Nota de crédito" | "Nota de débito" | "Guía de despacho" | "Factura exenta" | otro,
+  "folio": "número del documento como string",
+  "fecha": "YYYY-MM-DD",
+  "emisor": {
+    "rut": "12345678-9 (con guión y dígito verificador)",
+    "razon_social": "nombre completo",
+    "giro": "actividad económica si aparece",
+    "direccion": "si aparece"
+  },
+  "receptor": {
+    "rut": "12345678-9",
+    "razon_social": "nombre completo"
+  },
+  "items": [
+    {"descripcion": "...", "cantidad": número, "precio_unitario": número en CLP sin formato, "total": número en CLP sin formato}
+  ],
+  "totales": {
+    "neto": número en CLP,
+    "iva": número en CLP,
+    "total": número en CLP
+  },
+  "clasificacion_sugerida": {
+    "cuenta": "Ej: Gastos generales, Servicios profesionales, Materias primas, Arriendo, Combustibles, Servicios básicos, Honorarios, etc.",
+    "razon": "una oración explicando por qué esa clasificación basándote en el giro del emisor y los ítems"
+  },
+  "observaciones": "alertas relevantes si las hay. Si no hay, pon null."
 }
 
-Reglas:
-- Todos los montos en pesos chilenos (CLP) sin puntos ni comas, solo el número entero.
-- Si un campo no es legible, usa null.
-- "confianza" es un número entre 0 y 1 que representa qué tan seguro estás de la extracción global.
-- "categoria" debe ser una de las opciones listadas, eligiendo la más cercana al rubro del proveedor o los items.
-- "items_count" es la cantidad de líneas de detalle en la factura.
-
-Devuelve SOLO el JSON, nada más.`;
+Reglas estrictas:
+- Solo responde con JSON válido, sin texto adicional, sin markdown, sin backticks.
+- Los números van sin separadores de miles ni símbolo de moneda.
+- Si un campo no se puede determinar, usa null (no inventes datos).
+- El RUT debe tener formato XXXXXXXX-Y con guión.`;
 
 export async function extraerDatosFactura({ buffer, mimeType }) {
   const base64 = buffer.toString('base64');
@@ -50,11 +61,11 @@ export async function extraerDatosFactura({ buffer, mimeType }) {
 
   const response = await client.messages.create({
     model: MODEL,
-    max_tokens: 1024,
+    max_tokens: 1500,
     messages: [
       {
         role: 'user',
-        content: [sourceBlock, { type: 'text', text: PROMPT_EXTRACCION }],
+        content: [sourceBlock, { type: 'text', text: PROMPT_FACTURA }],
       },
     ],
   });
@@ -62,18 +73,27 @@ export async function extraerDatosFactura({ buffer, mimeType }) {
   const textBlock = response.content.find((b) => b.type === 'text');
   if (!textBlock) throw new Error('La API no devolvió texto');
 
-  // Limpiar fences si el modelo decidió añadirlos pese a la instrucción
   const cleaned = textBlock.text
     .replace(/^```(?:json)?\s*/i, '')
     .replace(/\s*```$/i, '')
     .trim();
 
+  let parsed;
   try {
-    return JSON.parse(cleaned);
+    parsed = JSON.parse(cleaned);
   } catch (e) {
     const err = new Error('No se pudo parsear la respuesta de la IA');
     err.status = 502;
-    err.publicMessage = 'La IA devolvió un formato inesperado. Intenta de nuevo.';
+    err.publicMessage = 'La extracción devolvió un formato inesperado. Intentá de nuevo.';
     throw err;
   }
+
+  if (parsed.error) {
+    const err = new Error(parsed.error);
+    err.status = 422;
+    err.publicMessage = parsed.error;
+    throw err;
+  }
+
+  return parsed;
 }

@@ -1,4 +1,4 @@
-const KEY = 'procesador-facturas-historial';
+const KEY = 'historial-facturas';
 
 export function getHistorial() {
   try {
@@ -11,22 +11,6 @@ export function getHistorial() {
 
 export function saveHistorial(items) {
   localStorage.setItem(KEY, JSON.stringify(items));
-}
-
-export function addFactura(factura) {
-  const items = getHistorial();
-  const conId = {
-    ...factura,
-    id: crypto.randomUUID(),
-    procesada_en: new Date().toISOString(),
-  };
-  items.unshift(conId);
-  saveHistorial(items);
-  return conId;
-}
-
-export function removeFactura(id) {
-  saveHistorial(getHistorial().filter((f) => f.id !== id));
 }
 
 export function clearHistorial() {
